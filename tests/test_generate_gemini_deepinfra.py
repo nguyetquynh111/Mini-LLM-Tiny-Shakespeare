@@ -1,6 +1,4 @@
 import json
-import sys
-
 import pytest
 
 from evaluation import generate_gemini_deepinfra as gemini
@@ -184,14 +182,6 @@ def test_generate_gemini_samples_calls_once_per_prompt(monkeypatch):
     assert all(call["max_tokens"] == gemini.MAX_NEW_TOKENS for call in calls)
     assert "Return only the continuation text" in calls[0]["messages"][0]["content"]
     assert "Prompt: To be, or not to" in calls[0]["messages"][1]["content"]
-
-
-def test_parse_args_does_not_include_skip_comparison(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["generate_gemini_deepinfra.py"])
-
-    args = gemini.parse_args()
-
-    assert not hasattr(args, "skip_comparison")
 
 
 def test_write_gemini_outputs_matches_generation_file_format(tmp_path):

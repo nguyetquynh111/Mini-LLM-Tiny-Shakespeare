@@ -14,13 +14,13 @@ EVALUATION_DIR = REPO_ROOT / "evaluation"
 EVALUATION_OUTPUT_DIR = OUTPUT_DIR / "evaluation"
 GENERATION_DIR = EVALUATION_OUTPUT_DIR / "generations"
 PLOT_DIR = EVALUATION_OUTPUT_DIR / "plots"
-DOCS_DIR = REPO_ROOT / "docs"
-DATA_FILE = REPO_ROOT / "tiny_shakespeare.txt"
+DATA_DIR = REPO_ROOT / "data"
+DATA_FILE = DATA_DIR / "tiny_shakespeare.txt"
 
 
 def ensure_output_dirs() -> None:
     """Create all standard output directories used by training and evaluation."""
-    for directory in (OUTPUT_DIR, CHECKPOINT_DIR, LOG_DIR, EVALUATION_OUTPUT_DIR, GENERATION_DIR, PLOT_DIR, DOCS_DIR):
+    for directory in (OUTPUT_DIR, CHECKPOINT_DIR, LOG_DIR, EVALUATION_OUTPUT_DIR, GENERATION_DIR, PLOT_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
 

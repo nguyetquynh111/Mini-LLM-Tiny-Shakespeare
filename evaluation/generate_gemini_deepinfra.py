@@ -1,4 +1,4 @@
-"""Generate Gemini Flash samples through DeepInfra and update comparison notes."""
+"""Generate Gemini Flash samples through DeepInfra."""
 
 from __future__ import annotations
 
@@ -17,12 +17,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from mini_llm.utils import EVALUATION_DIR, EVALUATION_OUTPUT_DIR, GENERATION_DIR, ensure_output_dirs
+from mini_llm.utils import EVALUATION_DIR, GENERATION_DIR, ensure_output_dirs
 
 
 DEFAULT_PROMPTS_PATH = EVALUATION_DIR / "prompts.txt"
 DEFAULT_OUTPUT_PATH = GENERATION_DIR / "gemini_flash.txt"
-DEFAULT_COMPARISON_PATH = EVALUATION_OUTPUT_DIR / "comparison_table.md"
 DEFAULT_API_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 DEFAULT_MODEL = "google/gemini-3.5-flash"
 MAX_NEW_TOKENS = 150
@@ -197,51 +196,11 @@ def write_gemini_outputs(path: Path, samples: List[Dict[str, str]], model: str) 
     print(f"Saved Gemini generations to {path}")
 
 
-def read_text_or_placeholder(path: Path) -> str:
-    """Read a text file or return a short placeholder if it is missing."""
-    if not path.exists():
-        return f"Missing file: {path.name}"
-    return path.read_text(encoding="utf-8")
-
-
-def update_comparison_table(api_key: str, model: str, api_url: str, comparison_path: Path) -> None:
-    """Ask Gemini to update the qualitative comparison table from saved samples."""
-    model_a_text = read_text_or_placeholder(GENERATION_DIR / "model_a.txt")
-    model_b_text = read_text_or_placeholder(GENERATION_DIR / "model_b.txt")
-    gemini_text = read_text_or_placeholder(GENERATION_DIR / "gemini_flash.txt")
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You write concise, honest project evaluation notes in English. "
-                "Return only a Markdown table with these columns: Model, Structural stability, "
-                "Shakespearean style accuracy, Degenerative repetition loops, Readability, Overall analysis. "
-                "Do not invent strong local-model performance if the samples are placeholders or fractured."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                "Create a qualitative comparison table for Custom Model A, Custom Model B, and Gemini Flash. "
-                "Use the following saved generation files as evidence.\n\n"
-                f"Custom Model A samples:\n{model_a_text[:4000]}\n\n"
-                f"Custom Model B samples:\n{model_b_text[:4000]}\n\n"
-                f"Gemini Flash samples:\n{gemini_text[:4000]}"
-            ),
-        },
-    ]
-    table = chat_completion(messages, api_key, model, api_url, max_tokens=900)
-    comparison_path.write_text("# Qualitative Generation Comparison\n\n" + table + "\n", encoding="utf-8")
-    print(f"Updated comparison table at {comparison_path}")
-
-
 def parse_args() -> argparse.Namespace:
     load_dotenv(REPO_ROOT / ".env")
     parser = argparse.ArgumentParser(description="Generate Gemini samples through DeepInfra.")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
-    parser.add_argument("--comparison", type=Path, default=DEFAULT_COMPARISON_PATH)
     parser.add_argument("--model", type=str, default=os.getenv("DEEPINFRA_MODEL", DEFAULT_MODEL))
     parser.add_argument("--api_url", type=str, default=os.getenv("DEEPINFRA_API_URL", DEFAULT_API_URL))
     return parser.parse_args()
@@ -255,7 +214,6 @@ def main() -> None:
         prompts = read_prompts(args.prompts)
         samples = generate_gemini_samples(prompts, api_key, args.model, args.api_url)
         write_gemini_outputs(args.output, samples, args.model)
-        update_comparison_table(api_key, args.model, args.api_url, args.comparison)
     except requests.HTTPError as exc:
         print(f"DeepInfra request failed: {exc}", file=sys.stderr)
         if exc.response is not None:
