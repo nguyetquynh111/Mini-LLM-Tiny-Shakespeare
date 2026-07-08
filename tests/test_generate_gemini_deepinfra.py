@@ -173,28 +173,45 @@ def test_generate_gemini_samples_calls_once_per_prompt(monkeypatch):
         api_url="https://example.test/chat/completions",
     )
 
-    assert samples == [
-        {"prompt": "To be, or not to", "output": "continuation 1"},
-        {"prompt": "O Romeo, Romeo", "output": "continuation 2"},
-    ]
+    assert samples[0]["prompt"] == "To be, or not to"
+    assert samples[0]["requested_token_count"] == gemini.MAX_NEW_TOKENS
+    assert samples[0]["returned_text"] == "continuation 1"
+    assert samples[0]["approximate_whitespace_token_count"] == 2
+    assert "not directly comparable" in samples[0]["tokenization_note"]
+    assert samples[1]["returned_text"] == "continuation 2"
     assert len(calls) == 2
     assert all(call["api_key"] == "test-key" for call in calls)
     assert all(call["max_tokens"] == gemini.MAX_NEW_TOKENS for call in calls)
     assert "Return only the continuation text" in calls[0]["messages"][0]["content"]
+    assert "roughly 150 tokens" in calls[0]["messages"][1]["content"]
+    assert "exactly 150" not in calls[0]["messages"][1]["content"]
     assert "Prompt: To be, or not to" in calls[0]["messages"][1]["content"]
 
 
-def test_write_gemini_outputs_matches_generation_file_format(tmp_path):
-    output_path = tmp_path / "gemini_flash.txt"
+def test_write_gemini_outputs_writes_structured_jsonl(tmp_path):
+    output_path = tmp_path / "gemini_flash.jsonl"
 
     gemini.write_gemini_outputs(
         output_path,
-        [{"prompt": "To be, or not to", "output": "Whether 'tis nobler still."}],
+        [
+            {
+                "prompt": "To be, or not to",
+                "requested_token_count": 150,
+                "returned_text": "Whether 'tis nobler still.",
+                "approximate_whitespace_token_count": 4,
+                "tokenization_note": gemini.TOKENIZATION_NOTE,
+            }
+        ],
         model="provider/model",
     )
 
-    text = output_path.read_text(encoding="utf-8")
-    assert text.startswith("Gemini Flash generations\nProvider model: provider/model\n")
-    assert f"Each sample requests {gemini.MAX_NEW_TOKENS} new generated tokens." in text
-    assert "Prompt: To be, or not to" in text
-    assert "Whether 'tis nobler still." in text
+    record = json.loads(output_path.read_text(encoding="utf-8"))
+    assert record["provider_model"] == "provider/model"
+    assert record["prompt"] == "To be, or not to"
+    assert record["requested_token_count"] == 150
+    assert record["returned_text"] == "Whether 'tis nobler still."
+    assert "not byte-level" in record["tokenization_note"]
+
+
+def test_approximate_whitespace_token_count():
+    assert gemini.approximate_whitespace_token_count("Whether 'tis nobler still.") == 4

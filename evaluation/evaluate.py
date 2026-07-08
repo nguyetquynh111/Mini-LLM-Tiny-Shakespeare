@@ -19,11 +19,16 @@ import torch
 from mini_llm.configs import config_from_dict, get_default_device
 from mini_llm.data import get_batch, load_data
 from mini_llm.model import GPTLanguageModel
-from mini_llm.utils import CHECKPOINT_DIR, EVALUATION_OUTPUT_DIR, ensure_output_dirs, missing_checkpoint_message
+from mini_llm.utils import CHECKPOINT_DIR, EVALUATION_DIR, ensure_output_dirs, missing_checkpoint_message, seed_everything
 
 
 DEFAULT_CHECKPOINT_DIR = CHECKPOINT_DIR
-DEFAULT_OUTPUT_PATH = EVALUATION_OUTPUT_DIR / "metrics.csv"
+DEFAULT_OUTPUT_PATH = EVALUATION_DIR / "metrics.csv"
+
+
+def perplexity_from_loss(loss: float) -> float:
+    """Convert cross-entropy loss to perplexity."""
+    return math.exp(loss)
 
 
 @torch.no_grad()
@@ -66,12 +71,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--eval_iters", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=1337)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     device = args.device or get_default_device()
+    seed_everything(args.seed)
     ensure_output_dirs()
     load_data()
 
@@ -83,7 +90,7 @@ def main() -> None:
         except FileNotFoundError as exc:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from exc
-        perplexity = math.exp(val_loss)
+        perplexity = perplexity_from_loss(val_loss)
         rows.append(
             {
                 "model": model_name,

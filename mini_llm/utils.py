@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
+from typing import Any, Optional
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -22,6 +24,65 @@ def ensure_output_dirs() -> None:
     """Create all standard output directories used by training and evaluation."""
     for directory in (OUTPUT_DIR, CHECKPOINT_DIR, LOG_DIR, EVALUATION_OUTPUT_DIR, GENERATION_DIR, PLOT_DIR):
         directory.mkdir(parents=True, exist_ok=True)
+
+
+def seed_everything(seed: int) -> None:
+    """Seed Python, NumPy, PyTorch, and CUDA when available."""
+    import numpy as np
+    import torch
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def tokenizer_metadata() -> dict[str, object]:
+    """Return metadata for the byte-level tokenizer used by this project."""
+    return {
+        "type": "byte-level utf-8",
+        "vocab_size": 256,
+        "decode_errors": "replace",
+    }
+
+
+def build_checkpoint(
+    *,
+    config,
+    model_state_dict: dict[str, Any],
+    optimizer_state_dict: Optional[dict[str, object]],
+    optimizer_config: dict[str, object],
+    step: int,
+    train_loss: Optional[float],
+    val_loss: Optional[float],
+    loss_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    """Build a checkpoint dictionary with explicit training metadata."""
+    from datetime import datetime, timezone
+
+    return {
+        "config_name": config.name,
+        "config": config.to_dict(),
+        "model_config": config.to_dict(),
+        "model_state_dict": model_state_dict,
+        "optimizer_state_dict": optimizer_state_dict,
+        "optimizer_config": optimizer_config,
+        "step": step,
+        "train_loss": train_loss,
+        "val_loss": val_loss,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "tokenizer": tokenizer_metadata(),
+        "loss_rows": loss_rows,
+    }
+
+
+def save_checkpoint(path: Path, checkpoint: dict[str, object]) -> None:
+    """Save a checkpoint, creating its parent directory if needed."""
+    import torch
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(checkpoint, path)
 
 
 def missing_checkpoint_message(model_name: str, checkpoint_path: Path) -> str:

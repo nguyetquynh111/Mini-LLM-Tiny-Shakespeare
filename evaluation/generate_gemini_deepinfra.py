@@ -21,11 +21,15 @@ from mini_llm.utils import EVALUATION_DIR, GENERATION_DIR, ensure_output_dirs
 
 
 DEFAULT_PROMPTS_PATH = EVALUATION_DIR / "prompts.txt"
-DEFAULT_OUTPUT_PATH = GENERATION_DIR / "gemini_flash.txt"
+DEFAULT_OUTPUT_PATH = GENERATION_DIR / "gemini_flash.jsonl"
 DEFAULT_API_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 DEFAULT_MODEL = "google/gemini-3.5-flash"
 MAX_NEW_TOKENS = 150
 EMPTY_RESPONSE_RETRY_MULTIPLIER = 4
+TOKENIZATION_NOTE = (
+    "Gemini tokenization is not byte-level and is not directly comparable to the local "
+    "byte-level models; this is a qualitative comparison only."
+)
 
 
 class EmptyAssistantTextError(RuntimeError):
@@ -96,7 +100,7 @@ def get_api_key() -> str:
     load_dotenv(REPO_ROOT / ".env")
     api_key = os.getenv("DEEPINFRA_API_KEY") or os.getenv("DEEPINFRA_TOKEN")
     if not api_key:
-        raise RuntimeError("Set DEEPINFRA_API_KEY in .env before running this script.")
+        raise RuntimeError("Missing API key. Set DEEPINFRA_API_KEY in the environment or .env.")
     return api_key
 
 
@@ -148,9 +152,14 @@ def chat_completion(messages: List[Dict[str, str]], api_key: str, model: str, ap
         return extract_chat_text(retry_data)
 
 
-def generate_gemini_samples(prompts: List[str], api_key: str, model: str, api_url: str) -> List[Dict[str, str]]:
+def approximate_whitespace_token_count(text: str) -> int:
+    """Return a rough whitespace-token count for qualitative comparison."""
+    return len(text.split())
+
+
+def generate_gemini_samples(prompts: List[str], api_key: str, model: str, api_url: str) -> List[Dict[str, Any]]:
     """Generate one Gemini continuation for every prompt."""
-    samples: List[Dict[str, str]] = []
+    samples: List[Dict[str, Any]] = []
     system_prompt = (
         "You are generating text for a Tiny Shakespeare language-model comparison. "
         "Continue the user prompt in a Shakespeare-inspired dramatic style. "
@@ -162,37 +171,33 @@ def generate_gemini_samples(prompts: List[str], api_key: str, model: str, api_ur
             {
                 "role": "user",
                 "content": (
-                    "Continue this prompt with exactly 150 new tokens if possible. "
+                    "Continue this prompt with roughly 150 tokens. "
                     f"Prompt: {prompt}"
                 ),
             },
         ]
         output = chat_completion(messages, api_key, model, api_url, MAX_NEW_TOKENS)
-        samples.append({"prompt": prompt, "output": output})
+        samples.append(
+            {
+                "prompt": prompt,
+                "requested_token_count": MAX_NEW_TOKENS,
+                "returned_text": output,
+                "approximate_whitespace_token_count": approximate_whitespace_token_count(output),
+                "tokenization_note": TOKENIZATION_NOTE,
+                "provider_model": model,
+            }
+        )
         print(f"Generated Gemini sample for prompt: {prompt}")
     return samples
 
 
-def write_gemini_outputs(path: Path, samples: List[Dict[str, str]], model: str) -> None:
-    """Write Gemini generations in the same readable format as local samples."""
+def write_gemini_outputs(path: Path, samples: List[Dict[str, Any]], model: str) -> None:
+    """Write Gemini generations as structured JSONL records."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        "Gemini Flash generations",
-        f"Provider model: {model}",
-        f"Each sample requests {MAX_NEW_TOKENS} new generated tokens.",
-        "",
-    ]
-    for sample in samples:
-        lines.extend(
-            [
-                "=" * 80,
-                f"Prompt: {sample['prompt']}",
-                "-" * 80,
-                sample["output"],
-                "",
-            ]
-        )
-    path.write_text("\n".join(lines), encoding="utf-8")
+    with path.open("w", encoding="utf-8") as file:
+        for sample in samples:
+            record = {**sample, "provider_model": model}
+            file.write(json.dumps(record, ensure_ascii=False) + "\n")
     print(f"Saved Gemini generations to {path}")
 
 
@@ -215,10 +220,20 @@ def main() -> None:
         samples = generate_gemini_samples(prompts, api_key, args.model, args.api_url)
         write_gemini_outputs(args.output, samples, args.model)
     except requests.HTTPError as exc:
-        print(f"DeepInfra request failed: {exc}", file=sys.stderr)
+        status = exc.response.status_code if exc.response is not None else None
+        if status == 429:
+            print("DeepInfra rate limit reached. Wait and retry later.", file=sys.stderr)
+        else:
+            print(f"DeepInfra API request failed: {exc}", file=sys.stderr)
         if exc.response is not None:
             print(exc.response.text, file=sys.stderr)
-        raise
+        raise SystemExit(1) from exc
+    except requests.RequestException as exc:
+        print(f"DeepInfra API request failed: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except (RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":

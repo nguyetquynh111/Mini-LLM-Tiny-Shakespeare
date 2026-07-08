@@ -131,12 +131,29 @@ class GPTLanguageModel(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx: torch.Tensor, max_new_tokens: int) -> torch.Tensor:
+    def generate(
+        self,
+        idx: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+    ) -> torch.Tensor:
         """Generate exactly max_new_tokens tokens by multinomial sampling."""
+        if max_new_tokens < 0:
+            raise ValueError("max_new_tokens must be non-negative")
+        if temperature <= 0:
+            raise ValueError("temperature must be positive")
+        if top_k is not None and top_k <= 0:
+            raise ValueError("top_k must be positive when provided")
+
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.config.block_size :]
             logits, _ = self(idx_cond)
-            logits = logits[:, -1, :]
+            logits = logits[:, -1, :] / temperature
+            if top_k is not None:
+                k = min(top_k, logits.size(-1))
+                values, _ = torch.topk(logits, k)
+                logits = logits.masked_fill(logits < values[:, [-1]], float("-inf"))
             probs = F.softmax(logits, dim=-1)
             next_idx = torch.multinomial(probs, num_samples=1)
             idx = torch.cat((idx, next_idx), dim=1)

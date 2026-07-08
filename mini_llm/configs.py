@@ -38,6 +38,7 @@ class TransformerConfig:
     eval_iters: int = 200
     device: str = "cpu"
     seed: int = 1337
+    grad_clip: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the config to a plain dictionary for checkpoint saving."""

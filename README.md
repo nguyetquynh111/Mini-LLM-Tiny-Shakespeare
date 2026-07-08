@@ -24,25 +24,29 @@ python -m pytest
 
 ```bash
 # Train
-python -m mini_llm.train --config model_a
-python -m mini_llm.train --config model_b
+python -m mini_llm.train --config model_a --grad-clip 1.0
+python -m mini_llm.train --config model_b --grad-clip 1.0
+
+# Resume training
+python -m mini_llm.train --config model_a --resume-from outputs/checkpoints/model_a.pt --grad-clip 1.0
 
 # Evaluate trained checkpoints
 python evaluation/evaluate.py
 python evaluation/plot_losses.py
 
 # Generate local samples
-python evaluation/generate_samples.py
+python evaluation/generate_samples.py --max-new-tokens 150
 
 # Generate from one checkpoint
-python -m mini_llm.generate --checkpoint outputs/checkpoints/model_a.pt --prompt "To be, or not to " --max_new_tokens 150
+python -m mini_llm.generate --checkpoint outputs/checkpoints/model_a.pt --prompt "To be, or not to " --max-new-tokens 150
 ```
 
 The dataset is downloaded automatically on first use and saved as `data/tiny_shakespeare.txt`.
+Training writes a final checkpoint such as `model_a.pt` and a best-validation checkpoint such as `model_a_best.pt`.
 
 ## DeepInfra / Gemini
 
-Generate Gemini Flash comparison samples through DeepInfra:
+Generate Gemini Flash 3.5 comparison samples through DeepInfra:
 
 ```bash
 DEEPINFRA_API_KEY=your_key python evaluation/generate_gemini_deepinfra.py
@@ -55,20 +59,21 @@ DEEPINFRA_API_KEY=your_key
 DEEPINFRA_MODEL=google/gemini-3.5-flash
 ```
 
-Default model: `google/gemini-3.5-flash`.
-You can override it with `DEEPINFRA_MODEL` or `--model`.
-
 ## Outputs
 
 ```text
 outputs/checkpoints/model_a.pt
+outputs/checkpoints/model_a_best.pt
 outputs/checkpoints/model_b.pt
+outputs/checkpoints/model_b_best.pt
 outputs/logs/model_a_loss.csv
 outputs/logs/model_b_loss.csv
-outputs/evaluation/metrics.csv
+evaluation/metrics.csv
 outputs/evaluation/generations/model_a.txt
+outputs/evaluation/generations/model_a.jsonl
 outputs/evaluation/generations/model_b.txt
-outputs/evaluation/generations/gemini_flash.txt
+outputs/evaluation/generations/model_b.jsonl
+outputs/evaluation/generations/gemini_flash.jsonl
 outputs/evaluation/plots/loss_convergence.png
 ```
 
@@ -78,4 +83,4 @@ outputs/evaluation/plots/loss_convergence.png
 
 `model_b`: larger model, 4 layers, 256 embeddings, block size 128.
 
-Both use byte tokens with `vocab_size=256`.
+Both local models use byte-level tokens with `vocab_size=256`.
