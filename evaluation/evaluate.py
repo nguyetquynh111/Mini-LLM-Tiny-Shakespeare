@@ -16,20 +16,21 @@ if str(REPO_ROOT) not in sys.path:
 
 import torch
 
-from configs import config_from_dict, get_default_device
-from data import get_batch, load_data
-from model import GPTLanguageModel
+from mini_llm.configs import config_from_dict, get_default_device
+from mini_llm.data import get_batch, load_data
+from mini_llm.model import GPTLanguageModel
+from mini_llm.utils import CHECKPOINT_DIR, EVALUATION_OUTPUT_DIR, ensure_output_dirs, missing_checkpoint_message
 
 
-DEFAULT_CHECKPOINT_DIR = REPO_ROOT / "checkpoints"
-DEFAULT_OUTPUT_PATH = REPO_ROOT / "evaluation" / "metrics.csv"
+DEFAULT_CHECKPOINT_DIR = CHECKPOINT_DIR
+DEFAULT_OUTPUT_PATH = EVALUATION_OUTPUT_DIR / "metrics.csv"
 
 
 @torch.no_grad()
 def evaluate_checkpoint(checkpoint_path: Path, eval_iters: Optional[int], device: str) -> float:
     """Return average validation cross-entropy loss for one checkpoint."""
     if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Missing checkpoint: {checkpoint_path}")
+        raise FileNotFoundError(missing_checkpoint_message(checkpoint_path.stem, checkpoint_path))
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
     config = config_from_dict(checkpoint["config"])
@@ -71,12 +72,17 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     device = args.device or get_default_device()
+    ensure_output_dirs()
     load_data()
 
     rows: list[dict[str, str]] = []
     for model_name in ("model_a", "model_b"):
         checkpoint_path = args.checkpoint_dir / f"{model_name}.pt"
-        val_loss = evaluate_checkpoint(checkpoint_path, args.eval_iters, device)
+        try:
+            val_loss = evaluate_checkpoint(checkpoint_path, args.eval_iters, device)
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from exc
         perplexity = math.exp(val_loss)
         rows.append(
             {

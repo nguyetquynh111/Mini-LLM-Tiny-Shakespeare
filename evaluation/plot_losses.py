@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_LOG_DIR = REPO_ROOT / "logs"
-DEFAULT_OUTPUT_PATH = REPO_ROOT / "evaluation" / "loss_convergence.png"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from mini_llm.utils import LOG_DIR, PLOT_DIR, ensure_output_dirs, missing_logs_message
+
+
+DEFAULT_LOG_DIR = LOG_DIR
+DEFAULT_OUTPUT_PATH = PLOT_DIR / "loss_convergence.png"
 
 
 def read_loss_log(path: Path) -> dict[str, list[float]]:
@@ -49,8 +56,13 @@ def plot_losses(log_dir: Path, output_path: Path) -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    model_a = read_loss_log(log_dir / "model_a_loss.csv")
-    model_b = read_loss_log(log_dir / "model_b_loss.csv")
+    model_a_path = log_dir / "model_a_loss.csv"
+    model_b_path = log_dir / "model_b_loss.csv"
+    if not model_a_path.exists() or not model_b_path.exists():
+        raise FileNotFoundError(missing_logs_message(model_a_path, model_b_path))
+
+    model_a = read_loss_log(model_a_path)
+    model_b = read_loss_log(model_b_path)
 
     plt.style.use("seaborn-v0_8-whitegrid")
     fig, ax = plt.subplots(figsize=(10, 6), dpi=160)
@@ -82,7 +94,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    plot_losses(args.log_dir, args.output)
+    ensure_output_dirs()
+    try:
+        plot_losses(args.log_dir, args.output)
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":

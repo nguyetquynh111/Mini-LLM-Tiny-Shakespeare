@@ -1,9 +1,0 @@
-Custom Model A generations
-
-Pending local generation.
-
-Run this command from the repository root after checkpoints/model_a.pt and checkpoints/model_b.pt exist:
-
-python evaluation/generate_samples.py
-
-This file will be overwritten with one 150-token continuation per prompt.
