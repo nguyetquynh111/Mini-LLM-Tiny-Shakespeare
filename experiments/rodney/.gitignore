@@ -1,0 +1,4 @@
+*.pt
+data/*.txt
+__pycache__/
+runs/

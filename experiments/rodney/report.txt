@@ -1,0 +1,228 @@
+==============================================================================
+REFERENCE BASELINES  (nats per byte -- every model number is stated against these)
+==============================================================================
+  1. uniform over 256        ln(256) = 5.5452   ppl   256.00
+     an untrained model. Knows nothing, including which bytes occur.
+  2. uniform over observed   ln( 65) = 4.1744   ppl    65.00
+     knows only which 65 byte values exist in train. No frequencies, no context.
+  3. train-unigram CE on val         = 3.3475   ppl    28.43
+     a frequency table fit on TRAIN, scored on VAL. Zero context.
+     (the same table scored on its own train data: 3.3093 --
+      an entropy, not a cross-entropy. The +0.0382 difference is the
+      price of not having seen val, and is why baseline 3 is the honest floor.)
+     val bytes never seen in train: 0 (0 tokens) -- Laplace smoothing handles them.
+
+  Reading the scale:  > 4.17 = has not learned the alphabet
+                      ~ 3.35 = a frequency table, nothing more
+                      < 3.05 = has actually learned context
+
+==============================================================================
+MODEL A   (470,784 params, 2L / 4H / 128C / block 64)
+==============================================================================
+
+  --- final loss, deterministic context-primed sweep over the FULL split ---
+
+  TRAIN  (1,003,840 tokens scored, 100.0% coverage)
+      1.3545 nats/byte | ppl   3.875 | 1.954 bits/byte
+      vs uniform-256      5.5452  (+4.1907)
+      vs uniform-observed 4.1744  (+2.8199)
+      vs unigram-CE-val   3.3475  (+1.9930)
+      -> has genuinely learned context, well beyond byte frequencies
+
+  VAL  (111,520 tokens scored, 100.0% coverage)
+      1.5617 nats/byte | ppl   4.767 | 2.253 bits/byte
+      vs uniform-256      5.5452  (+3.9835)
+      vs uniform-observed 4.1744  (+2.6127)
+      vs unigram-CE-val   3.3475  (+1.7858)
+      -> has genuinely learned context, well beyond byte frequencies
+
+  --- train/val divergence ---
+  divergence onset : step   500  |  tokens_seen   2,048,000
+                     (gap first exceeds 0.05 nats and stays above for 3 consecutive evals)
+                     train 2.0226  val 2.0805  gap +0.0579
+  val minimum      : step  4900  |  tokens_seen  20,070,400  |  val 1.6057
+  final            : step  5000  |  tokens_seen  20,480,000  |  val 1.6064  gap +0.2111
+  cost of overfitting past the minimum: +0.0006 nats
+
+==============================================================================
+MODEL B   (10,942,720 params, 6L / 6H / 384C / block 256)
+==============================================================================
+
+  --- final loss, deterministic context-primed sweep over the FULL split ---
+
+  TRAIN  (1,003,776 tokens scored, 100.0% coverage)
+      0.9986 nats/byte | ppl   2.715 | 1.441 bits/byte
+      vs uniform-256      5.5452  (+4.5466)
+      vs uniform-observed 4.1744  (+3.1758)
+      vs unigram-CE-val   3.3475  (+2.3489)
+      -> has genuinely learned context, well beyond byte frequencies
+
+  VAL  (111,488 tokens scored, 100.0% coverage)
+      1.4564 nats/byte | ppl   4.291 | 2.101 bits/byte
+      vs uniform-256      5.5452  (+4.0888)
+      vs uniform-observed 4.1744  (+2.7180)
+      vs unigram-CE-val   3.3475  (+1.8911)
+      -> has genuinely learned context, well beyond byte frequencies
+
+  --- train/val divergence ---
+  divergence onset : step   500  |  tokens_seen   4,096,000
+                     (gap first exceeds 0.05 nats and stays above for 3 consecutive evals)
+                     train 2.0858  val 2.1405  gap +0.0547
+  val minimum      : step  4000  |  tokens_seen  32,768,000  |  val 1.4742
+  final            : step  5000  |  tokens_seen  40,960,000  |  val 1.4950  gap +0.5177
+  cost of overfitting past the minimum: +0.0208 nats
+
+==============================================================================
+A vs B  (bytes-perplexity IS comparable here: identical 256-byte vocab, identical val split)
+==============================================================================
+  val loss (nats/byte)     A    1.5617   B    1.4564
+  bytes-perplexity         A    4.7668   B    4.2905
+  bits/byte                A    2.2530   B    2.1012
+
+  divergence onset
+    by STEP        : A       500   B       500
+    by TOKENS SEEN : A 2,048,000   B 4,096,000   <- the honest comparison
+
+  NOTE: A sees 4,096 tokens/step, B sees 8,192. At the same STEP, B has
+  consumed twice the text. Comparing onset by step alone would credit B with
+  lasting longer than it did. The headline claim is about capacity vs. data,
+  so tokens_seen is the axis that supports it.
+
+==============================================================================
+EQUAL-TOKEN CONTROL  (both at 20,480,000 tokens; CSV estimator both sides)
+==============================================================================
+  Model A  step  5000   val 1.6064   gap +0.2111
+  Model B  step  2500   val 1.5020   gap +0.3089
+
+  B's advantage at EQUAL tokens : +0.1044 nats
+  B's advantage over full runs  : +0.1113 nats (B read 2x the text)
+  -> 94% of B's advantage survives the equal-token control.
+     B's win is a CAPACITY effect, not a data-budget artifact.
+
+
+==============================================================================
+SAMPLE QUALITY   (temperature 0.8, top-k 40, exactly 150 tokens per prompt)
+==============================================================================
+
+  CORPUS CONTROL -- real Shakespeare, same 150-byte length, same metric:
+    4-gram repetition : 0.0615 +/- 0.0545
+    8-gram repetition : 0.0144 +/- 0.0339
+    speaker headings  : 1.27 per sample
+    mean line length  : 30.6 chars
+
+  'Degenerate' = measurably ABOVE the corpus rate, not merely nonzero.
+  Real English repeats: ' the', 'and ' recur in any 150 bytes.
+
+------------------------------------------------------------------------------
+  MODEL A  (470,784 params)
+------------------------------------------------------------------------------
+    4-gram repetition : 0.0490   (corpus 0.0615 +/- 0.0545, z = -0.23)  -> within corpus range
+    8-gram repetition : 0.0000   (corpus 0.0144 +/- 0.0339)
+    speaker headings  : 1.20/sample  (corpus 1.27)
+    mean line length  : 33.9 chars  (corpus 30.6)
+
+    repetition vs temperature (mean over all 5 prompts):
+      T=0.5:  4-gram 0.0980   8-gram 0.0056   (worst single sample 0.1633)
+      T=0.8:  4-gram 0.0490   8-gram 0.0000   (worst single sample 0.1020)
+      T=1.0:  4-gram 0.0245   8-gram 0.0056   (worst single sample 0.0612)
+      -> T=0.5 repeats 4.0x as much as T=1.0. Same weights.
+
+------------------------------------------------------------------------------
+  MODEL B  (10,942,720 params)
+------------------------------------------------------------------------------
+    4-gram repetition : 0.0857   (corpus 0.0615 +/- 0.0545, z = +0.45)  -> within corpus range
+    8-gram repetition : 0.0168   (corpus 0.0144 +/- 0.0339)
+    speaker headings  : 1.60/sample  (corpus 1.27)
+    mean line length  : 29.8 chars  (corpus 30.6)
+
+    repetition vs temperature (mean over all 5 prompts):
+      T=0.5:  4-gram 0.0762   8-gram 0.0070   (worst single sample 0.1565)
+      T=0.8:  4-gram 0.0857   8-gram 0.0168   (worst single sample 0.1769)
+      T=1.0:  4-gram 0.0531   8-gram 0.0140   (worst single sample 0.1429)
+      -> T=0.5 repeats 1.4x as much as T=1.0. Same weights.
+
+  full samples -> samples.md
+
+
+# Model comparison — byte-level GPT on tinyshakespeare
+
+| | Model A | Model B | Gemini Flash |
+|---|---|---|---|
+| **Parameters** | 470,784 | 10,942,720 | |
+| **Architecture** | 2L / 4H / 128C, block 64 | 6L / 6H / 384C, block 256 | |
+| **Val loss (nats/byte)** | 1.5617 | 1.4564 | |
+| **Bytes-perplexity** | 4.767 | 4.291 | |
+| **Bits/byte** | 2.253 | 2.101 | |
+| **Val loss @ equal tokens (20.48M)** | 1.6064 | 1.5020 | |
+| **Divergence onset** | step 500 (2,048,000 tok) | step 500 (4,096,000 tok) | |
+| **Val minimum** | step 4900 (20,070,400 tok) | step 4000 (32,768,000 tok) | |
+| **Terminal train/val gap** | +0.2111 | +0.5177 | |
+| | | | |
+| **Structural stability** (T=0.8) | 1.2 speaker headings/sample vs corpus 1.3; line length 34 vs 31 | 1.6 speaker headings/sample vs corpus 1.3; line length 30 vs 31 | |
+| **Shakespearean style** | val 1.562 nats/byte, bytes-ppl 4.77 | val 1.456 nats/byte, bytes-ppl 4.29 | |
+| | | | |
+| **Degenerate repetition** (4-gram dup. rate — *temperature MUST be stated, see note*) | | | |
+| &nbsp;&nbsp;at **T = 0.5**, top-k 40 | 0.098 — within corpus range | 0.076 — within corpus range | *(state T)* |
+| &nbsp;&nbsp;at **T = 0.8**, top-k 40 | 0.049 — within corpus range | 0.086 — within corpus range | *(state T)* |
+| &nbsp;&nbsp;at **T = 1.0**, top-k 40 | 0.024 — within corpus range | 0.053 — within corpus range | *(state T)* |
+| &nbsp;&nbsp;worst single sample (T=0.8) | 0.102 | 0.177 | |
+| &nbsp;&nbsp;**corpus control** (temperature-free) | 0.061 ± 0.054 | 0.061 ± 0.054 | 0.061 ± 0.054 |
+
+> **Repetition is strongly temperature-dependent — this is a finding, not a footnote.**
+> The same weights swing from 0.098 (T=0.5) to 0.024 (T=1.0) for Model A (4.0x), and 0.076 to 0.053 for Model B (1.4x).
+> Lower T sharpens the distribution, which buys fewer misspellings and pays for them in loops.
+>
+> **A repetition number quoted without its temperature is unfalsifiable** — a wide range of
+> figures can be produced from either model by choosing T. Hence every row above states its T,
+> and comparing two models' repetition at different temperatures is meaningless. If the Gemini
+> Flash column is filled in, its sampling temperature must be stated too, or the comparison is void.
+>
+> Stated precisely, because the tempting overclaim is wrong: the temperature swing does NOT
+> always dominate the model difference. For Model A the swing (0.073) is larger than the A-vs-B gap at fixed T (0.037);
+> for Model B the swing (0.023) is SMALLER than it. So temperature must always be
+> reported, but it does not by itself explain away the difference between the models.
+>
+> Per-sample variance is also large: single prompts reach 0.16-0.18 at T=0.5 while the 5-prompt
+> mean is ~0.08-0.10. Quote means over prompts, never a single sample.
+>
+> Note the direction: at T=0.8 and T=1.0 the LARGER model repeats MORE (0.086 vs 0.049).
+> A better-fit model is a more confident model: its next-byte distribution is lower-entropy, so
+> at any fixed T it concentrates more mass on its favourite continuation. Capacity buys accuracy
+> and pays for it in diversity.
+
+### Reference baselines (nats/byte)
+
+| Baseline | Loss | Bytes-ppl | Meaning |
+|---|---|---|---|
+| uniform over 256 | 5.5452 | 256.00 | untrained; knows nothing |
+| uniform over observed (65) | 4.1744 | 65.00 | knows only which bytes exist |
+| train-unigram CE on val | 3.3475 | 28.43 | a frequency table; zero context |
+| **real corpus (150-byte slices)** | — | — | **4-gram repetition 0.061 ± 0.054** |
+
+Both models sit ~1.8–1.9 nats below the frequency-table floor, so both have
+genuinely learned context rather than byte statistics.
+
+### Perplexity comparability (IMPORTANT)
+
+**Bytes-perplexity is comparable between Model A and Model B** — identical 256-byte
+vocabulary, identical val split, identical scoring procedure. The A-vs-B numbers above
+may be read side by side.
+
+**It is NOT comparable to a model with a different tokenizer.** Perplexity is `exp` of the
+mean NLL *per token*, so its value is only meaningful once you say what a token is. Ours is
+one BYTE. If a teammate's implementation is character-level (a ~65-symbol vocabulary, where
+one token is not one byte) or subword/BPE (where one token spans several characters), their
+perplexity is normalized per a *different unit* and the numbers must NOT be placed in the
+same column as though they measured the same thing. A word-level perplexity of 80 is a far
+stronger result than a byte-level perplexity of 4.3, not a far worse one.
+
+To compare across tokenizers, either:
+1. **Report bits-per-byte** (given above), which renormalizes every model to the same unit —
+   bytes of source text — and is the honest cross-tokenizer metric; or
+2. Report the perplexities in **separate tables** and state why they cannot be compared.
+
+The Gemini Flash column is deliberately empty. Note that a Gemini perplexity, if obtainable
+at all, would be subword-level and therefore belongs under rule (2) above — the qualitative
+rows (structure, style, repetition) are the ones that can be filled in and compared directly.
+
+table -> comparison.md

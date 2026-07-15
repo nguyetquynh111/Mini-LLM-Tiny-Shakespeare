@@ -1,0 +1,9 @@
+# CUDA build. NOTE: torch 2.6.0+cu124 (the version originally targeted) has no
+# wheel for Python 3.14 -- cu124 support stops at Python 3.13. On Python 3.14 the
+# earliest available CUDA builds are 2.9.x, so we pin the CUDA variant of the
+# version already in the env. RTX 3060 is sm_86 (Ampere); cu126 supports it.
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch==2.12.1+cu126
+numpy
+matplotlib
+requests
