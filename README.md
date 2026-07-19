@@ -142,8 +142,11 @@ python evaluation/analyze_generations.py
 | Generation metrics | [outputs/evaluation/generation_metrics.csv](outputs/evaluation/generation_metrics.csv) |
 | Generation summary | [outputs/evaluation/generation_summary.csv](outputs/evaluation/generation_summary.csv) |
 | Model A generations | [outputs/evaluation/generations/model_a.jsonl](outputs/evaluation/generations/model_a.jsonl) |
+| Model A readable generations | [outputs/evaluation/generations/model_a.txt](outputs/evaluation/generations/model_a.txt) |
 | Model B generations | [outputs/evaluation/generations/model_b.jsonl](outputs/evaluation/generations/model_b.jsonl) |
+| Model B readable generations | [outputs/evaluation/generations/model_b.txt](outputs/evaluation/generations/model_b.txt) |
 | Gemini Flash generations | [outputs/evaluation/generations/gemini_flash.jsonl](outputs/evaluation/generations/gemini_flash.jsonl) |
+| Loss convergence plot | [outputs/evaluation/plots/loss_convergence.png](outputs/evaluation/plots/loss_convergence.png) |
 | Equal-token plot | [outputs/evaluation/plots/equal_token_comparison.png](outputs/evaluation/plots/equal_token_comparison.png) |
 
 ## Reproducibility
