@@ -6,6 +6,9 @@ import argparse
 import json
 import os
 import sys
+import warnings
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -24,16 +27,36 @@ DEFAULT_PROMPTS_PATH = EVALUATION_DIR / "prompts.txt"
 DEFAULT_OUTPUT_PATH = GENERATION_DIR / "gemini_flash.jsonl"
 DEFAULT_API_URL = "https://api.deepinfra.com/v1/openai/chat/completions"
 DEFAULT_MODEL = "google/gemini-3.5-flash"
+PROVIDER = "deepinfra"
 MAX_NEW_TOKENS = 150
-EMPTY_RESPONSE_RETRY_MULTIPLIER = 4
 TOKENIZATION_NOTE = (
     "Gemini tokenization is not byte-level and is not directly comparable to the local "
     "byte-level models; this is a qualitative comparison only."
+)
+REQUIRED_JSONL_FIELDS = (
+    "prompt",
+    "provider",
+    "provider_model",
+    "requested_completion_tokens",
+    "completion_tokens",
+    "finish_reason",
+    "generated_at_utc",
+    "returned_text",
 )
 
 
 class EmptyAssistantTextError(RuntimeError):
     """Raised when DeepInfra returns a choice without assistant text."""
+
+
+@dataclass(frozen=True)
+class ChatCompletionResult:
+    """Provider-reported generation text and metadata for one completion."""
+
+    returned_text: str
+    completion_tokens: int | None
+    finish_reason: str | None
+    provider_model: str | None
 
 
 def content_to_text(content: Any) -> str:
@@ -54,8 +77,8 @@ def content_to_text(content: Any) -> str:
     return ""
 
 
-def extract_chat_text(data: Dict[str, Any]) -> str:
-    """Extract assistant text or raise a useful error for empty responses."""
+def first_choice(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the first OpenAI-compatible choice or raise a useful error."""
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
         raise RuntimeError(f"DeepInfra response did not include choices: {json.dumps(data)[:1200]}")
@@ -63,6 +86,28 @@ def extract_chat_text(data: Dict[str, Any]) -> str:
     choice = choices[0]
     if not isinstance(choice, dict):
         raise RuntimeError(f"DeepInfra returned an invalid choice: {json.dumps(choice)[:1200]}")
+    return choice
+
+
+def extract_completion_tokens(data: Dict[str, Any]) -> int | None:
+    """Extract provider-reported completion token usage without estimating it."""
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        return None
+
+    value = usage.get("completion_tokens")
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
+def extract_chat_result(data: Dict[str, Any]) -> ChatCompletionResult:
+    """Extract assistant text and provider metadata from a chat response."""
+    choice = first_choice(data)
 
     message = choice.get("message")
     text = ""
@@ -70,19 +115,35 @@ def extract_chat_text(data: Dict[str, Any]) -> str:
         text = content_to_text(message.get("content")).strip()
     if not text:
         text = content_to_text(choice.get("text")).strip()
-    if text:
-        return text
+    finish_reason = choice.get("finish_reason")
+    if finish_reason is not None and not isinstance(finish_reason, str):
+        finish_reason = str(finish_reason)
+    if not text:
+        response_summary = json.dumps(
+            {
+                "finish_reason": finish_reason,
+                "message": message,
+                "choice_keys": sorted(choice.keys()),
+            },
+            ensure_ascii=True,
+        )
+        raise EmptyAssistantTextError(f"DeepInfra returned no assistant text: {response_summary[:1200]}")
 
-    finish_reason = choice.get("finish_reason", "unknown")
-    response_summary = json.dumps(
-        {
-            "finish_reason": finish_reason,
-            "message": message,
-            "choice_keys": sorted(choice.keys()),
-        },
-        ensure_ascii=True,
+    provider_model = data.get("model")
+    if provider_model is not None and not isinstance(provider_model, str):
+        provider_model = str(provider_model)
+
+    return ChatCompletionResult(
+        returned_text=text,
+        completion_tokens=extract_completion_tokens(data),
+        finish_reason=finish_reason,
+        provider_model=provider_model,
     )
-    raise EmptyAssistantTextError(f"DeepInfra returned no assistant text: {response_summary[:1200]}")
+
+
+def extract_chat_text(data: Dict[str, Any]) -> str:
+    """Extract assistant text or raise a useful error for empty responses."""
+    return extract_chat_result(data).returned_text
 
 
 def read_prompts(path: Path) -> List[str]:
@@ -142,19 +203,25 @@ def post_chat_completion(
 
 def chat_completion(messages: List[Dict[str, str]], api_key: str, model: str, api_url: str, max_tokens: int) -> str:
     """Call DeepInfra and retry once if the provider returns an empty final message."""
+    return chat_completion_result(messages, api_key, model, api_url, max_tokens).returned_text
+
+
+def chat_completion_result(
+    messages: List[Dict[str, str]], api_key: str, model: str, api_url: str, max_tokens: int
+) -> ChatCompletionResult:
+    """Call DeepInfra and return provider-reported generation metadata."""
     data = post_chat_completion(messages, api_key, model, api_url, max_tokens)
     try:
-        return extract_chat_text(data)
+        return extract_chat_result(data)
     except EmptyAssistantTextError:
-        retry_tokens = max_tokens * EMPTY_RESPONSE_RETRY_MULTIPLIER
         retry_messages = build_retry_messages(messages)
-        retry_data = post_chat_completion(retry_messages, api_key, model, api_url, retry_tokens)
-        return extract_chat_text(retry_data)
+        retry_data = post_chat_completion(retry_messages, api_key, model, api_url, max_tokens)
+        return extract_chat_result(retry_data)
 
 
-def approximate_whitespace_token_count(text: str) -> int:
-    """Return a rough whitespace-token count for qualitative comparison."""
-    return len(text.split())
+def generated_at_utc() -> str:
+    """Return the current UTC timestamp for saved provider generations."""
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def generate_gemini_samples(prompts: List[str], api_key: str, model: str, api_url: str) -> List[Dict[str, Any]]:
@@ -171,20 +238,30 @@ def generate_gemini_samples(prompts: List[str], api_key: str, model: str, api_ur
             {
                 "role": "user",
                 "content": (
-                    "Continue this prompt with roughly 150 tokens. "
+                    "Continue this prompt within the requested 150 provider-token limit. "
                     f"Prompt: {prompt}"
                 ),
             },
         ]
-        output = chat_completion(messages, api_key, model, api_url, MAX_NEW_TOKENS)
+        result = chat_completion_result(messages, api_key, model, api_url, MAX_NEW_TOKENS)
+        if result.completion_tokens is None:
+            warnings.warn(
+                "DeepInfra response did not include usage.completion_tokens; "
+                "recording completion_tokens as null.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         samples.append(
             {
                 "prompt": prompt,
-                "requested_token_count": MAX_NEW_TOKENS,
-                "returned_text": output,
-                "approximate_whitespace_token_count": approximate_whitespace_token_count(output),
+                "provider": PROVIDER,
+                "provider_model": result.provider_model or model,
+                "requested_completion_tokens": MAX_NEW_TOKENS,
+                "completion_tokens": result.completion_tokens,
+                "finish_reason": result.finish_reason,
+                "generated_at_utc": generated_at_utc(),
+                "returned_text": result.returned_text,
                 "tokenization_note": TOKENIZATION_NOTE,
-                "provider_model": model,
             }
         )
         print(f"Generated Gemini sample for prompt: {prompt}")
@@ -196,7 +273,15 @@ def write_gemini_outputs(path: Path, samples: List[Dict[str, Any]], model: str) 
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
         for sample in samples:
-            record = {**sample, "provider_model": model}
+            if not isinstance(sample.get("returned_text"), str) or not str(sample["returned_text"]).strip():
+                raise ValueError("Gemini sample is missing returned_text")
+            record = {**sample}
+            record.setdefault("provider", PROVIDER)
+            record.setdefault("provider_model", model)
+            missing_fields = [field for field in REQUIRED_JSONL_FIELDS if field not in record]
+            if missing_fields:
+                missing = ", ".join(missing_fields)
+                raise ValueError(f"Gemini sample is missing required metadata fields: {missing}")
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
     print(f"Saved Gemini generations to {path}")
 
