@@ -1,5 +1,7 @@
 # Mini-LLM Tiny Shakespeare
 
+![Training and validation convergence](outputs/evaluation/plots/loss_convergence.png)
+
 A compact byte-level GPT-style Transformer implemented directly in PyTorch. The project trains and compares two model configurations on the complete Tiny Shakespeare corpus to examine how increased model capacity and context length affect performance.
 
 ## Team collaboration
@@ -25,10 +27,6 @@ Final checkpoints are evaluated deterministically over all next-byte targets in 
 | **Model B** |          20.48M |          1.5059 |     4.5082 |    2.1726 |
 
 Model B achieves lower validation loss, perplexity, and bits per byte than Model A.
-
-### Training convergence
-
-![Training and validation convergence](outputs/evaluation/plots/loss_convergence.png)
 
 ### Equal-token comparison
 
