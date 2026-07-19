@@ -1,0 +1,3 @@
+model,checkpoint_step,training_tokens,tokens_per_step,full_val_loss,perplexity,bits_per_byte,tokens_scored,coverage,context_stride,uniform_256_loss,uniform_observed_loss,train_unigram_val_loss,observed_vocab_size,unseen_val_tokens
+model_a,5000,10240000,2048,1.743079,5.714914,2.514732,111539,1.000000,32,5.545177,4.174387,3.347521,65,0
+model_b,5000,20480000,4096,1.505902,4.508216,2.172557,111539,1.000000,64,5.545177,4.174387,3.347521,65,0

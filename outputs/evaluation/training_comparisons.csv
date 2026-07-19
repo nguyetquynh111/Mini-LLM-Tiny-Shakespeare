@@ -1,0 +1,5 @@
+scenario,model,step,tokens_seen,train_loss,val_loss,metric_source
+fixed_step,model_a,5000,10240000,1.599737,1.774994,saved_training_log_sampled_batches
+fixed_step,model_b,5000,20480000,1.296379,1.533256,saved_training_log_sampled_batches
+equal_tokens,model_a,5000,10240000,1.599737,1.774994,saved_training_log_sampled_batches
+equal_tokens,model_b,2500,10240000,1.441454,1.645937,saved_training_log_sampled_batches
