@@ -38,12 +38,15 @@ def test_generate_for_prompts_records_exact_requested_new_tokens():
         max_new_tokens=5,
         temperature=0.9,
         top_k=10,
+        seed=7,
     )
 
     assert outputs[0]["prompt"] == "To be"
     assert outputs[0]["requested_new_token_count"] == 5
     assert outputs[0]["actual_generated_new_token_count"] == 5
-    assert outputs[0]["sampling"] == {"temperature": 0.9, "top_k": 10}
+    assert outputs[0]["sampling"] == {"temperature": 0.9, "top_k": 10, "seed": 7}
+    assert len(outputs[0]["generated_token_ids"]) == 5
+    assert "generated_continuation" in outputs[0]
 
 
 def test_verify_generated_length_accepts_exact_byte_count():
@@ -69,7 +72,7 @@ def test_write_generations_jsonl_includes_checkpoint_and_model(tmp_path):
             "generated_text": "To be!",
             "requested_new_token_count": 1,
             "actual_generated_new_token_count": 1,
-            "sampling": {"temperature": 1.0, "top_k": None},
+            "sampling": {"temperature": 1.0, "top_k": None, "seed": 1337},
         }
     ]
 

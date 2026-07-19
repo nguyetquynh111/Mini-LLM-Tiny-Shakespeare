@@ -85,14 +85,19 @@ def generate_for_prompts(
     max_new_tokens: int = MAX_NEW_TOKENS,
     temperature: float = 1.0,
     top_k: int | None = None,
+    seed: int | None = None,
 ) -> list[dict[str, object]]:
-    """Generate exactly 150 new tokens for each prompt."""
+    """Generate exactly ``max_new_tokens`` using paired per-prompt seeds."""
     outputs: list[dict[str, object]] = []
-    for prompt in prompts:
+    for prompt_index, prompt in enumerate(prompts):
+        sample_seed = None if seed is None else seed + prompt_index
+        if sample_seed is not None:
+            seed_everything(sample_seed)
         prompt_tokens = encode(prompt)
         idx = torch.tensor([prompt_tokens], dtype=torch.long, device=device)
         generated = model.generate(idx, max_new_tokens, temperature=temperature, top_k=top_k)
         generated_tokens = generated[0].tolist()
+        continuation_tokens = generated_tokens[len(prompt_tokens) :]
         text = decode(generated_tokens)
         actual_new_tokens = len(generated_tokens) - len(prompt_tokens)
         if actual_new_tokens != max_new_tokens:
@@ -101,9 +106,11 @@ def generate_for_prompts(
             {
                 "prompt": prompt,
                 "generated_text": text,
+                "generated_continuation": decode(continuation_tokens),
+                "generated_token_ids": continuation_tokens,
                 "requested_new_token_count": max_new_tokens,
                 "actual_generated_new_token_count": actual_new_tokens,
-                "sampling": {"temperature": temperature, "top_k": top_k},
+                "sampling": {"temperature": temperature, "top_k": top_k, "seed": sample_seed},
             }
         )
     return outputs
@@ -120,7 +127,7 @@ def write_generations(path: Path, model_label: str, outputs: list[dict[str, obje
                 "=" * 80,
                 f"Prompt: {output['prompt']}",
                 "-" * 80,
-                str(output["generated_text"]),
+                str(output["generated_text"]).rstrip(),
                 "",
             ]
         )
@@ -131,11 +138,15 @@ def write_generations(path: Path, model_label: str, outputs: list[dict[str, obje
 def write_generations_jsonl(path: Path, model_name: str, checkpoint_path: Path, outputs: list[dict[str, object]]) -> None:
     """Write generated text samples as structured JSONL."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        portable_checkpoint_path = str(checkpoint_path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        portable_checkpoint_path = str(checkpoint_path)
     with path.open("w", encoding="utf-8") as file:
         for output in outputs:
             record = {
                 **output,
-                "checkpoint_path": str(checkpoint_path),
+                "checkpoint_path": portable_checkpoint_path,
                 "model_config_name": model_name,
             }
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -186,6 +197,7 @@ def main() -> None:
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             top_k=args.top_k,
+            seed=args.seed,
         )
         write_generations(GENERATION_DIR / f"{model_name}.txt", model_label, outputs)
         write_generations_jsonl(GENERATION_DIR / f"{model_name}.jsonl", model_name, checkpoint_path, outputs)
