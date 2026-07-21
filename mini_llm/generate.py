@@ -1,8 +1,8 @@
 """Generate text from a saved Tiny Shakespeare Transformer checkpoint.
 
 Smoke-test example:
-python -m mini_llm.generate --checkpoint outputs/checkpoints/model_a.pt --prompt "To be, or not to " --max_new_tokens 150
-python -m mini_llm.generate --checkpoint outputs/checkpoints/model_b.pt --prompt "To be, or not to " --max_new_tokens 150
+python -m mini_llm.generate --checkpoint mini_llm/checkpoints/model_a.pt --prompt "To be, or not to " --max-new-tokens 150
+python -m mini_llm.generate --checkpoint mini_llm/checkpoints/model_b.pt --prompt "To be, or not to " --max-new-tokens 150
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import torch
 from mini_llm.configs import config_from_dict, get_default_device
 from mini_llm.data import decode, encode
 from mini_llm.model import GPTLanguageModel
-from mini_llm.utils import GENERATION_DIR, ensure_output_dirs, seed_everything
+from mini_llm.utils import GENERATION_DIR, ensure_artifact_dirs, seed_everything
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,7 +59,7 @@ def main() -> None:
     validate_args(args)
     device = args.device or get_default_device()
     seed_everything(args.seed)
-    ensure_output_dirs()
+    ensure_artifact_dirs()
 
     if not args.checkpoint.exists():
         model_name = args.checkpoint.stem

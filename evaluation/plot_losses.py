@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 from evaluation.training_analysis import load_default_logs, write_analysis_outputs
-from mini_llm.utils import LOG_DIR, PLOT_DIR, ensure_output_dirs
+from mini_llm.utils import LOG_DIR, PLOT_DIR, ensure_artifact_dirs
 
 
 DEFAULT_OUTPUT = PLOT_DIR / "loss_convergence.png"
@@ -129,7 +129,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    ensure_output_dirs()
+    ensure_artifact_dirs()
     logs = load_default_logs(args.model_a_log, args.model_b_log)
     _, comparisons = write_analysis_outputs(logs)
     plot_convergence(logs, args.output)

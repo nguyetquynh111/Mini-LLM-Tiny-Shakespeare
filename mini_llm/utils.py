@@ -1,4 +1,4 @@
-"""Shared filesystem paths and small CLI helpers."""
+"""Shared repository paths, artifact helpers, and reproducibility utilities."""
 
 from __future__ import annotations
 
@@ -9,20 +9,19 @@ from typing import Any, Optional
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_DIR.parent
-OUTPUT_DIR = REPO_ROOT / "outputs"
-CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
-LOG_DIR = OUTPUT_DIR / "logs"
+CHECKPOINT_DIR = PACKAGE_DIR / "checkpoints"
+LOG_DIR = PACKAGE_DIR / "logs"
 EVALUATION_DIR = REPO_ROOT / "evaluation"
-EVALUATION_OUTPUT_DIR = OUTPUT_DIR / "evaluation"
-GENERATION_DIR = EVALUATION_OUTPUT_DIR / "generations"
-PLOT_DIR = EVALUATION_OUTPUT_DIR / "plots"
+EVALUATION_RESULTS_DIR = EVALUATION_DIR / "results"
+GENERATION_DIR = EVALUATION_DIR / "generations"
+PLOT_DIR = EVALUATION_DIR / "plots"
 DATA_DIR = REPO_ROOT / "data"
 DATA_FILE = DATA_DIR / "tiny_shakespeare.txt"
 
 
-def ensure_output_dirs() -> None:
-    """Create all standard output directories used by training and evaluation."""
-    for directory in (OUTPUT_DIR, CHECKPOINT_DIR, LOG_DIR, EVALUATION_OUTPUT_DIR, GENERATION_DIR, PLOT_DIR):
+def ensure_artifact_dirs() -> None:
+    """Create the standard training and evaluation artifact directories."""
+    for directory in (CHECKPOINT_DIR, LOG_DIR, EVALUATION_RESULTS_DIR, GENERATION_DIR, PLOT_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
 

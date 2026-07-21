@@ -29,15 +29,15 @@ from mini_llm.data import load_data
 from mini_llm.model import GPTLanguageModel
 from mini_llm.utils import (
     CHECKPOINT_DIR,
-    EVALUATION_OUTPUT_DIR,
-    ensure_output_dirs,
+    EVALUATION_RESULTS_DIR,
+    ensure_artifact_dirs,
     missing_checkpoint_message,
     seed_everything,
 )
 
 
 DEFAULT_CHECKPOINT_DIR = CHECKPOINT_DIR
-DEFAULT_OUTPUT_PATH = EVALUATION_OUTPUT_DIR / "metrics.csv"
+DEFAULT_OUTPUT_PATH = EVALUATION_RESULTS_DIR / "metrics.csv"
 
 
 def perplexity_from_loss(loss: float) -> float:
@@ -245,7 +245,7 @@ def main() -> None:
     args = parse_args()
     device = args.device or get_default_device()
     seed_everything(args.seed)
-    ensure_output_dirs()
+    ensure_artifact_dirs()
     splits = load_data()
     baselines = compute_baselines(splits["train"], splits["val"])
 

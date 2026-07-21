@@ -1,154 +1,170 @@
-# Mini-LLM Tiny Shakespeare
+# Mini-LLM: Tiny Shakespeare
 
-![Training and validation convergence](outputs/evaluation/plots/loss_convergence.png)
+![Model A and Model B training and validation loss convergence](evaluation/plots/loss_convergence.png)
 
-A compact byte-level GPT-style Transformer implemented directly in PyTorch. The project trains and compares two model configurations on the complete Tiny Shakespeare corpus to examine how increased model capacity and context length affect performance.
-
-## Team collaboration
-
-Because the project is compact and its components are tightly coupled, the team primarily worked through in-person collaborative coding and pair-programming sessions. Major design decisions, implementation, and debugging were completed together. After each session, individual members reviewed and validated the components assigned to them in the accompanying report.
-
-## Model configurations
-
-| Model                  | Layers | Attention heads | Embedding size | Context length |
-| ---------------------- | -----: | --------------: | -------------: | -------------: |
-| **Model A — Baseline** |      2 |               4 |            128 |             64 |
-| **Model B — Scaled**   |      4 |               4 |            256 |            128 |
-
-Both models use byte-level tokenization with a fixed vocabulary of 256 possible byte values.
+A compact, reproducible byte-level GPT implementation in PyTorch. This repository trains and compares two causal Transformer language models on Tiny Shakespeare, saves complete checkpoints and loss histories, generates fixed-seed samples, and evaluates both models over the full validation split.
 
 ## Results
 
-Final checkpoints are evaluated deterministically over all next-byte targets in the held-out validation split.
+| Model | Layers | Heads | Embedding | Context | Training tokens | Validation loss | Perplexity | Bits/byte |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **Model A — Baseline** | 2 | 4 | 128 | 64 | 10.24M | 1.7431 | 5.7149 | 2.5147 |
+| **Model B — Scaled** | 4 | 4 | 256 | 128 | 20.48M | 1.5059 | 4.5082 | 2.1726 |
 
-| Model       | Training tokens | Validation loss | Perplexity | Bits/byte |
-| ----------- | --------------: | --------------: | ---------: | --------: |
-| **Model A** |          10.24M |          1.7431 |     5.7149 |    2.5147 |
-| **Model B** |          20.48M |          1.5059 |     4.5082 |    2.1726 |
+The reported checkpoint metrics score every next-byte target in the held-out validation split exactly once. At the largest shared budget of 10.24M processed tokens, the saved training logs report validation losses of 1.7750 for Model A and 1.6459 for Model B.
 
-Model B achieves lower validation loss, perplexity, and bits per byte than Model A.
+## Repository layout
 
-### Equal-token comparison
-
-Because Model B processes more tokens per training step due to its longer context window, the project also compares both models at the largest exact shared training budget of **10.24 million tokens**.
-
-| Model       | Shared training budget | Validation loss |
-| ----------- | ---------------------: | --------------: |
-| **Model A** |          10.24M tokens |          1.7750 |
-| **Model B** |          10.24M tokens |          1.6459 |
-
-Model B therefore performs better even when both models are compared at the same number of processed training tokens.
-
-These equal-token values come from the saved training logs. The primary results table reports deterministic full-validation evaluation of the final checkpoints.
-
-![Equal-token comparison](outputs/evaluation/plots/equal_token_comparison.png)
-
-## Setup
-
-Create and activate the environment:
-
-```bash
-conda create -n tiny_llm python=3.10
-conda activate tiny_llm
+```text
+mini_llm/
+├── configs.py              # Model A and Model B presets
+├── data.py                 # Byte tokenizer and dataset loading
+├── model.py                # GPT architecture
+├── train.py                # Training and checkpoint loop
+├── generate.py             # Single-prompt generation CLI
+├── utils.py                # Paths, seeding, and checkpoint helpers
+├── checkpoints/            # Final and best Model A/Model B checkpoints
+└── logs/                   # Reproducible training-loss CSV files
+evaluation/
+├── prompts.txt             # Fixed evaluation prompts
+├── evaluate.py             # Deterministic full-validation metrics
+├── generate_samples.py     # Paired local-model generation
+├── analyze_generations.py  # Generation-quality metrics
+├── training_analysis.py    # Convergence and budget analysis
+├── plot_losses.py          # Publication-quality plots
+├── generations/            # Saved text and JSONL outputs
+├── results/                # Evaluation and analysis CSV files
+└── plots/                  # Loss and comparison figures
+data/tiny_shakespeare.txt   # Included training corpus
+tests/                      # Automated unit and integration tests
+requirements.txt            # Pinned Python dependencies
 ```
 
-Install the required packages and run the automated tests:
+## Install
+
+Run all commands from the repository root. Python 3.10 is recommended and is the reference environment for the pinned dependencies.
 
 ```bash
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pytest
 ```
 
-The Tiny Shakespeare dataset is included at:
+On Windows, activate the environment with `.venv\Scripts\activate` instead. PyTorch automatically uses CUDA or Apple MPS when available; pass `--device cpu` to force CPU execution.
 
-```text
-data/tiny_shakespeare.txt
-```
+The corpus is already included at `data/tiny_shakespeare.txt`. If it is removed, the loader downloads the same public Tiny Shakespeare file automatically.
 
-If the file is missing, the data loader automatically downloads the same public corpus.
+## Train and generate: Model A
 
-## Training
-
-Train both configurations:
+Train Model A from its fixed preset and seed:
 
 ```bash
-python -m mini_llm.train --config model_a --grad-clip 1.0
-python -m mini_llm.train --config model_b --grad-clip 1.0
+python -m mini_llm.train \
+  --config model_a \
+  --grad-clip 1.0 \
+  --seed 1337
 ```
 
-Resume Model A from a saved checkpoint:
+This writes `mini_llm/checkpoints/model_a.pt`, `mini_llm/checkpoints/model_a_best.pt`, and `mini_llm/logs/model_a_loss.csv`. Generate the documented 150-token sample from the final checkpoint:
 
 ```bash
-python -m mini_llm.train --config model_a \
-  --resume-from outputs/checkpoints/model_a.pt \
+python -m mini_llm.generate \
+  --checkpoint mini_llm/checkpoints/model_a.pt \
+  --prompt "To be, or not to" \
+  --max-new-tokens 150 \
+  --temperature 1.0 \
+  --seed 1337 \
+  --output evaluation/generations/model_a_generation.json
+```
+
+## Train and generate: Model B
+
+Train Model B from its fixed preset and seed:
+
+```bash
+python -m mini_llm.train \
+  --config model_b \
+  --grad-clip 1.0 \
+  --seed 1337
+```
+
+This writes `mini_llm/checkpoints/model_b.pt`, `mini_llm/checkpoints/model_b_best.pt`, and `mini_llm/logs/model_b_loss.csv`. Generate the matching sample from Model B:
+
+```bash
+python -m mini_llm.generate \
+  --checkpoint mini_llm/checkpoints/model_b.pt \
+  --prompt "To be, or not to" \
+  --max-new-tokens 150 \
+  --temperature 1.0 \
+  --seed 1337 \
+  --output evaluation/generations/model_b_generation.json
+```
+
+The trained checkpoints are committed, so both generation commands work immediately after installation. Full training defaults to 5,000 optimizer steps per model and can take substantial time on CPU. For a fast pipeline check that preserves the committed artifacts, use a temporary destination:
+
+```bash
+python -m mini_llm.train \
+  --config model_a \
+  --max-iters 2 \
+  --eval-interval 1 \
+  --eval-iters 1 \
+  --checkpoint-dir /tmp/mini_llm_smoke/checkpoints \
+  --log-dir /tmp/mini_llm_smoke/logs
+```
+
+To resume training, provide the matching checkpoint and a larger total step target:
+
+```bash
+python -m mini_llm.train \
+  --config model_a \
+  --resume-from mini_llm/checkpoints/model_a.pt \
+  --max-iters 5500 \
   --grad-clip 1.0
 ```
 
-Replace `model_a` with `model_b` and provide the corresponding checkpoint path to resume Model B.
+## Reproduce evaluation and plots
 
-Training uses:
-
-* a fixed 90/10 byte-level train-validation split;
-* vocabulary size 256;
-* random seed 1337;
-* AdamW optimization;
-* cross-entropy loss;
-* causal multi-head self-attention;
-* gradient clipping.
-
-Training histories and checkpoints are saved under:
-
-```text
-outputs/logs/
-outputs/checkpoints/
-```
-
-## Evaluation
-
-Generate the Gemini reference samples first:
+After both checkpoints exist, reproduce the local generations, deterministic metrics, convergence tables, generation analysis, and figures with:
 
 ```bash
-python evaluation/generate_gemini_deepinfra.py
+python -m evaluation.generate_samples --max-new-tokens 150 --seed 1337
+python -m evaluation.evaluate --seed 1337
+python -m evaluation.training_analysis
+python -m evaluation.analyze_generations
+python -m evaluation.plot_losses
 ```
 
-This command requires `DEEPINFRA_API_KEY` in the environment or a local `.env` file.
+`evaluation.generate_samples` uses the same prompt-specific seeds for Model A and Model B, producing paired JSONL and readable text files under `evaluation/generations/`. `evaluation.evaluate` scores the entire validation split and writes `evaluation/results/metrics.csv`. Re-running `evaluation.plot_losses` recreates the figure displayed at the top of this README from the CSV loss logs.
 
-Then run deterministic evaluation, local generation, and saved-generation analysis:
+The optional Gemini comparison requires a DeepInfra key. Copy `.env.example` to `.env`, set `DEEPINFRA_API_KEY`, and run:
 
 ```bash
-python evaluation/evaluate.py
-python evaluation/training_analysis.py
-python evaluation/plot_losses.py
-python evaluation/generate_samples.py \
-  --max-new-tokens 150 \
-  --seed 1337
-python evaluation/analyze_generations.py
+python -m evaluation.generate_gemini_deepinfra
+python -m evaluation.analyze_generations
 ```
 
-### Methodology
+Gemini uses provider tokens rather than this project’s byte tokens, so its saved generations are treated as a qualitative reference and normalized by UTF-8 byte length only for text-shape metrics.
 
-* Model A and Model B final checkpoints are compared after the same number of training steps.
-* Model B has a larger context length, embedding dimension, depth, and parameter count than Model A.
-* Local models generate exactly 150 new byte tokens for each fixed prompt.
-* Gemini requests 150 provider completion tokens and records provider-reported token usage, finish reason, provider, provider model, UTC generation time, prompt, and returned text when the API returns them.
+## Saved artifacts
 
-### Artifacts
-
-| Artifact | Path |
+| Artifact | Location |
 | --- | --- |
-| Deterministic metrics | [outputs/evaluation/metrics.csv](outputs/evaluation/metrics.csv) |
-| Convergence statistics | [outputs/evaluation/convergence_stats.csv](outputs/evaluation/convergence_stats.csv) |
-| Training comparisons | [outputs/evaluation/training_comparisons.csv](outputs/evaluation/training_comparisons.csv) |
-| Generation metrics | [outputs/evaluation/generation_metrics.csv](outputs/evaluation/generation_metrics.csv) |
-| Generation summary | [outputs/evaluation/generation_summary.csv](outputs/evaluation/generation_summary.csv) |
-| Model A generations | [outputs/evaluation/generations/model_a.jsonl](outputs/evaluation/generations/model_a.jsonl) |
-| Model A readable generations | [outputs/evaluation/generations/model_a.txt](outputs/evaluation/generations/model_a.txt) |
-| Model B generations | [outputs/evaluation/generations/model_b.jsonl](outputs/evaluation/generations/model_b.jsonl) |
-| Model B readable generations | [outputs/evaluation/generations/model_b.txt](outputs/evaluation/generations/model_b.txt) |
-| Gemini Flash generations | [outputs/evaluation/generations/gemini_flash.jsonl](outputs/evaluation/generations/gemini_flash.jsonl) |
-| Loss convergence plot | [outputs/evaluation/plots/loss_convergence.png](outputs/evaluation/plots/loss_convergence.png) |
-| Equal-token plot | [outputs/evaluation/plots/equal_token_comparison.png](outputs/evaluation/plots/equal_token_comparison.png) |
+| Model A and B loss histories | [`mini_llm/logs/`](mini_llm/logs/) |
+| Final and best checkpoints | [`mini_llm/checkpoints/`](mini_llm/checkpoints/) |
+| Deterministic validation metrics | [`evaluation/results/metrics.csv`](evaluation/results/metrics.csv) |
+| Convergence statistics | [`evaluation/results/convergence_stats.csv`](evaluation/results/convergence_stats.csv) |
+| Equal-budget comparison | [`evaluation/results/training_comparisons.csv`](evaluation/results/training_comparisons.csv) |
+| Generation metrics and summary | [`evaluation/results/`](evaluation/results/) |
+| Local and Gemini generations | [`evaluation/generations/`](evaluation/generations/) |
+| Convergence and equal-token plots | [`evaluation/plots/`](evaluation/plots/) |
 
-## Reproducibility
+## Reproducibility details
 
-The project uses fixed model configurations, a fixed dataset split, and seed `1337`. Saved checkpoints, training histories, evaluation tables, generated samples, and plots are included so that the reported results can be inspected without retraining the models.
+- Fixed 90/10 train-validation split with no shuffled preprocessing.
+- Fixed 256-value UTF-8 byte vocabulary.
+- Fixed default seed `1337` for Python, NumPy, PyTorch, and CUDA.
+- AdamW optimization, cross-entropy loss, causal self-attention, and optional gradient clipping.
+- Checkpoints include the model configuration, optimizer state, tokenizer metadata, training step, losses, and loss history.
+- Exact direct dependency versions are pinned in `requirements.txt`.

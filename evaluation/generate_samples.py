@@ -21,7 +21,7 @@ from mini_llm.utils import (
     CHECKPOINT_DIR,
     EVALUATION_DIR,
     GENERATION_DIR,
-    ensure_output_dirs,
+    ensure_artifact_dirs,
     missing_checkpoint_message,
     seed_everything,
 )
@@ -156,7 +156,13 @@ def write_generations_jsonl(path: Path, model_name: str, checkpoint_path: Path, 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate prompt completions for local checkpoints.")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS_PATH)
-    parser.add_argument("--checkpoint_dir", type=Path, default=DEFAULT_CHECKPOINT_DIR)
+    parser.add_argument(
+        "--checkpoint-dir",
+        "--checkpoint_dir",
+        dest="checkpoint_dir",
+        type=Path,
+        default=DEFAULT_CHECKPOINT_DIR,
+    )
     parser.add_argument("--max-new-tokens", "--max_new_tokens", dest="max_new_tokens", type=int, default=MAX_NEW_TOKENS)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top-k", "--top_k", dest="top_k", type=int, default=None)
@@ -181,7 +187,7 @@ def main() -> None:
     device = args.device or get_default_device()
     seed_everything(args.seed)
 
-    ensure_output_dirs()
+    ensure_artifact_dirs()
     prompts = read_prompts(args.prompts)
     for model_name, model_label in (("model_a", "Custom Model A"), ("model_b", "Custom Model B")):
         checkpoint_path = args.checkpoint_dir / f"{model_name}.pt"

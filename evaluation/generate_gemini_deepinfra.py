@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from mini_llm.utils import EVALUATION_DIR, GENERATION_DIR, ensure_output_dirs
+from mini_llm.utils import EVALUATION_DIR, GENERATION_DIR, ensure_artifact_dirs
 
 
 DEFAULT_PROMPTS_PATH = EVALUATION_DIR / "prompts.txt"
@@ -299,7 +299,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     try:
-        ensure_output_dirs()
+        ensure_artifact_dirs()
         api_key = get_api_key()
         prompts = read_prompts(args.prompts)
         samples = generate_gemini_samples(prompts, api_key, args.model, args.api_url)

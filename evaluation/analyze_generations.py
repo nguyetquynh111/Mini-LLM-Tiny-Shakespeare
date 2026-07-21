@@ -22,12 +22,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from mini_llm.data import load_data
-from mini_llm.utils import EVALUATION_OUTPUT_DIR, GENERATION_DIR
+from mini_llm.utils import EVALUATION_RESULTS_DIR, GENERATION_DIR
 
 
 ANALYSIS_BYTES = 150
-DEFAULT_METRICS_PATH = EVALUATION_OUTPUT_DIR / "generation_metrics.csv"
-DEFAULT_SUMMARY_PATH = EVALUATION_OUTPUT_DIR / "generation_summary.csv"
+DEFAULT_METRICS_PATH = EVALUATION_RESULTS_DIR / "generation_metrics.csv"
+DEFAULT_SUMMARY_PATH = EVALUATION_RESULTS_DIR / "generation_summary.csv"
 SPEAKER_HEADING = re.compile(r"^[A-Z][A-Z '\-]{2,}:$")
 
 

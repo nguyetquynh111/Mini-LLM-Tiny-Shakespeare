@@ -22,7 +22,7 @@ from mini_llm.utils import (
     CHECKPOINT_DIR,
     LOG_DIR,
     build_checkpoint,
-    ensure_output_dirs,
+    ensure_artifact_dirs,
     save_checkpoint,
     seed_everything,
 )
@@ -31,13 +31,15 @@ from mini_llm.utils import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a Tiny Shakespeare Transformer.")
     parser.add_argument("--config", choices=["model_a", "model_b"], required=True)
-    parser.add_argument("--max_iters", type=int, default=None)
-    parser.add_argument("--eval_interval", type=int, default=None)
-    parser.add_argument("--eval_iters", type=int, default=None)
+    parser.add_argument("--max-iters", "--max_iters", dest="max_iters", type=int, default=None)
+    parser.add_argument("--eval-interval", "--eval_interval", dest="eval_interval", type=int, default=None)
+    parser.add_argument("--eval-iters", "--eval_iters", dest="eval_iters", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--grad-clip", type=float, default=None)
     parser.add_argument("--resume-from", type=Path, default=None)
+    parser.add_argument("--checkpoint-dir", type=Path, default=CHECKPOINT_DIR)
+    parser.add_argument("--log-dir", type=Path, default=LOG_DIR)
     return parser.parse_args()
 
 
@@ -59,6 +61,7 @@ def estimate_loss(model: GPTLanguageModel, config) -> dict[str, float]:
 
 def write_loss_log(path: Path, rows: list[dict[str, Union[float, int]]]) -> None:
     """Write training losses to a CSV file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=["step", "train_loss", "val_loss"])
         writer.writeheader()
@@ -67,6 +70,12 @@ def write_loss_log(path: Path, rows: list[dict[str, Union[float, int]]]) -> None
 
 def validate_args(args: argparse.Namespace) -> None:
     """Reject invalid training arguments with clear messages."""
+    if args.max_iters is not None and args.max_iters < 0:
+        raise ValueError("--max-iters must be non-negative")
+    if args.eval_interval is not None and args.eval_interval <= 0:
+        raise ValueError("--eval-interval must be positive")
+    if args.eval_iters is not None and args.eval_iters <= 0:
+        raise ValueError("--eval-iters must be positive")
     if args.grad_clip is not None and args.grad_clip <= 0:
         raise ValueError("--grad-clip must be positive when provided")
 
@@ -109,7 +118,7 @@ def main() -> None:
 
     seed_everything(config.seed)
 
-    ensure_output_dirs()
+    ensure_artifact_dirs()
 
     load_data()
     model = GPTLanguageModel(config).to(config.device)
@@ -136,8 +145,8 @@ def main() -> None:
         "learning_rate": config.learning_rate,
         "grad_clip": config.grad_clip,
     }
-    final_checkpoint_path = CHECKPOINT_DIR / f"{config.name}.pt"
-    best_checkpoint_path = CHECKPOINT_DIR / f"{config.name}_best.pt"
+    final_checkpoint_path = args.checkpoint_dir / f"{config.name}.pt"
+    best_checkpoint_path = args.checkpoint_dir / f"{config.name}_best.pt"
 
     for step in range(start_step, config.max_iters + 1):
         if step % config.eval_interval == 0 or step == config.max_iters:
@@ -181,7 +190,7 @@ def main() -> None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
         optimizer.step()
 
-    log_path = LOG_DIR / f"{config.name}_loss.csv"
+    log_path = args.log_dir / f"{config.name}_loss.csv"
 
     write_loss_log(log_path, loss_rows)
     save_checkpoint(

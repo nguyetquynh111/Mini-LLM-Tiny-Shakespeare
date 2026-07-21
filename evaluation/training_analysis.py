@@ -14,11 +14,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from mini_llm.configs import MODEL_PRESETS
-from mini_llm.utils import EVALUATION_OUTPUT_DIR, LOG_DIR, missing_logs_message
+from mini_llm.utils import EVALUATION_RESULTS_DIR, LOG_DIR, missing_logs_message
 
 
-DEFAULT_STATS_PATH = EVALUATION_OUTPUT_DIR / "convergence_stats.csv"
-DEFAULT_COMPARISONS_PATH = EVALUATION_OUTPUT_DIR / "training_comparisons.csv"
+DEFAULT_STATS_PATH = EVALUATION_RESULTS_DIR / "convergence_stats.csv"
+DEFAULT_COMPARISONS_PATH = EVALUATION_RESULTS_DIR / "training_comparisons.csv"
 
 
 def read_loss_log(path: Path, tokens_per_step: int) -> list[dict[str, float | int]]:
