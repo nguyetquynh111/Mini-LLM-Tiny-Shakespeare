@@ -1,8 +1,9 @@
-"""Create publication-quality convergence and budget-comparison plots."""
+"""Create publication-quality loss, perplexity, and budget-comparison plots."""
 
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from mini_llm.utils import LOG_DIR, PLOT_DIR, ensure_artifact_dirs
 
 
 DEFAULT_OUTPUT = PLOT_DIR / "loss_convergence.png"
+DEFAULT_PERPLEXITY_OUTPUT = PLOT_DIR / "perplexity_convergence.png"
 DEFAULT_EQUAL_TOKEN_OUTPUT = PLOT_DIR / "equal_token_comparison.png"
 COLORS = {"model_a": "#2563EB", "model_b": "#DC2626"}
 LABELS = {"model_a": "Model A", "model_b": "Model B"}
@@ -26,6 +28,11 @@ LABELS = {"model_a": "Model A", "model_b": "Model B"}
 
 def _millions(value: float, _position: int) -> str:
     return f"{value / 1_000_000:.0f}M"
+
+
+def validation_perplexities(rows: list[dict[str, float | int]]) -> list[float]:
+    """Convert logged validation cross-entropy losses to perplexities."""
+    return [math.exp(float(row["val_loss"])) for row in rows]
 
 
 def plot_convergence(logs: dict[str, list[dict[str, float | int]]], output_path: Path) -> None:
@@ -80,6 +87,61 @@ def plot_convergence(logs: dict[str, list[dict[str, float | int]]], output_path:
     plt.close(fig)
 
 
+def plot_perplexity_convergence(
+    logs: dict[str, list[dict[str, float | int]]],
+    output_path: Path,
+) -> None:
+    """Plot validation perplexity derived from each logged validation loss."""
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig, axis = plt.subplots(figsize=(7.6, 4.8))
+
+    for model_name in ("model_a", "model_b"):
+        rows = logs[model_name]
+        steps = [int(row["step"]) for row in rows]
+        perplexities = validation_perplexities(rows)
+        color = COLORS[model_name]
+        label = LABELS[model_name]
+        axis.plot(
+            steps,
+            perplexities,
+            marker="o",
+            markersize=4.5,
+            linewidth=2.4,
+            color=color,
+            label=label,
+        )
+        axis.annotate(
+            f"{perplexities[-1]:.2f}",
+            xy=(steps[-1], perplexities[-1]),
+            xytext=(-10, 8),
+            textcoords="offset points",
+            ha="right",
+            color=color,
+            fontsize=9,
+            fontweight="semibold",
+        )
+
+    axis.set_yscale("log")
+    axis.set_xlabel("Optimizer step")
+    axis.set_ylabel("Validation perplexity (log scale)")
+    axis.set_title("Tiny Shakespeare: Validation Perplexity Convergence", fontweight="semibold")
+    axis.legend(frameon=True)
+    axis.grid(alpha=0.25, which="both")
+    axis.spines[["top", "right"]].set_visible(False)
+    fig.text(
+        0.5,
+        0.015,
+        "Perplexity = exp(validation cross-entropy loss); source: saved training-log estimates.",
+        ha="center",
+        fontsize=8,
+        color="#4B5563",
+    )
+    fig.subplots_adjust(left=0.12, right=0.98, top=0.88, bottom=0.18)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_budget_comparison(comparisons: list[dict[str, object]], output_path: Path) -> None:
     """Compare logged validation loss under fixed-step and equal-token budgets."""
     lookup = {(str(row["scenario"]), str(row["model"])): row for row in comparisons}
@@ -119,10 +181,13 @@ def plot_budget_comparison(comparisons: list[dict[str, object]], output_path: Pa
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Plot training convergence and equal-token comparison.")
+    parser = argparse.ArgumentParser(
+        description="Plot loss, perplexity, and equal-token comparisons."
+    )
     parser.add_argument("--model-a-log", type=Path, default=LOG_DIR / "model_a_loss.csv")
     parser.add_argument("--model-b-log", type=Path, default=LOG_DIR / "model_b_loss.csv")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--perplexity-output", type=Path, default=DEFAULT_PERPLEXITY_OUTPUT)
     parser.add_argument("--equal-token-output", type=Path, default=DEFAULT_EQUAL_TOKEN_OUTPUT)
     return parser.parse_args()
 
@@ -133,8 +198,10 @@ def main() -> None:
     logs = load_default_logs(args.model_a_log, args.model_b_log)
     _, comparisons = write_analysis_outputs(logs)
     plot_convergence(logs, args.output)
+    plot_perplexity_convergence(logs, args.perplexity_output)
     plot_budget_comparison(comparisons, args.equal_token_output)
     print(f"Saved convergence plot to {args.output}")
+    print(f"Saved perplexity convergence plot to {args.perplexity_output}")
     print(f"Saved equal-token comparison plot to {args.equal_token_output}")
 
 
